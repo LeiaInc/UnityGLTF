@@ -93,89 +93,95 @@ namespace UnityGLTF
 	/// </summary>
 	public delegate float[] ValuesConvertion(NumericArray data, int frame);
 
-	public class GLTFSceneImporter : IDisposable
-	{
-		public enum ColliderType
-		{
-			None,
-			Box,
-			Mesh,
-			MeshConvex
-		}
+    public class GLTFSceneImporter : IDisposable
+    {
+        public enum ColliderType
+        {
+            None,
+            Box,
+            Mesh,
+            MeshConvex
+        }
 
-		/// <summary>
-		/// Maximum LOD
-		/// </summary>
-		public int MaximumLod = 300;
+        /// <summary>
+        /// Maximum LOD
+        /// </summary>
+        public int MaximumLod = 300;
 
-		/// <summary>
-		/// Timeout for certain threading operations
-		/// </summary>
-		public int Timeout = 8;
+        /// <summary>
+        /// Timeout for certain threading operations
+        /// </summary>
+        public int Timeout = 8;
 
-		private bool _isMultithreaded;
+        private bool _isMultithreaded;
 
-		/// <summary>
-		/// Use Multithreading or not.
-		/// In editor, this is always false. This is to prevent a freeze in editor (noticed in Unity versions 2017.x and 2018.x)
-		/// </summary>
-		public bool IsMultithreaded
-		{
-			get
-			{
-				return Application.isEditor ? false : _isMultithreaded;
-			}
-			set
-			{
-				_isMultithreaded = value;
-			}
-		}
+        /// <summary>
+        /// Use Multithreading or not.
+        /// In editor, this is always false. This is to prevent a freeze in editor (noticed in Unity versions 2017.x and 2018.x)
+        /// </summary>
+        public bool IsMultithreaded
+        {
+            get
+            {
+                return Application.isEditor ? false : _isMultithreaded;
+            }
+            set
+            {
+                _isMultithreaded = value;
+            }
+        }
 
-		/// <summary>
-		/// The parent transform for the created GameObject
-		/// </summary>
-		public Transform SceneParent { get; set; }
+        /// <summary>
+        /// The parent transform for the created GameObject
+        /// </summary>
+        public Transform SceneParent { get; set; }
 
-		/// <summary>
-		/// The last created object
-		/// </summary>
-		public GameObject CreatedObject { get; private set; }
+        /// <summary>
+        /// The last created object
+        /// </summary>
+        public GameObject CreatedObject { get; private set; }
 
-		/// <summary>
-		/// Adds colliders to primitive objects when created
-		/// </summary>
-		public ColliderType Collider { get; set; }
+        /// <summary>
+        /// Adds colliders to primitive objects when created
+        /// </summary>
+        public ColliderType Collider { get; set; }
 
-		/// <summary>
-		/// Override for the shader to use on created materials
-		/// </summary>
-		public string CustomShaderName { get; set; }
+        /// <summary>
+        /// Override for the shader to use on created materials
+        /// </summary>
+        public string CustomShaderName { get; set; }
 
-		/// <summary>
-		/// Whether to keep a CPU-side copy of the mesh after upload to GPU (for example, in case normals/tangents need recalculation)
-		/// </summary>
-		public bool KeepCPUCopyOfMesh = true;
+        /// <summary>
+        /// Whether to keep a CPU-side copy of the mesh after upload to GPU (for example, in case normals/tangents need recalculation)
+        /// </summary>
+        public bool KeepCPUCopyOfMesh = true;
 
-		/// <summary>
-		/// Whether to keep a CPU-side copy of the texture after upload to GPU
-		/// </summary>
-		/// <remaks>
-		/// This is is necessary when a texture is used with different sampler states, as Unity doesn't allow setting
-		/// of filter and wrap modes separately form the texture object. Setting this to false will omit making a copy
-		/// of a texture in that case and use the original texture's sampler state wherever it's referenced; this is
-		/// appropriate in cases such as the filter and wrap modes being specified in the shader instead
-		/// </remaks>
-		public bool KeepCPUCopyOfTexture = true;
+        /// <summary>
+        /// Whether to keep a CPU-side copy of the texture after upload to GPU
+        /// </summary>
+        /// <remaks>
+        /// This is is necessary when a texture is used with different sampler states, as Unity doesn't allow setting
+        /// of filter and wrap modes separately form the texture object. Setting this to false will omit making a copy
+        /// of a texture in that case and use the original texture's sampler state wherever it's referenced; this is
+        /// appropriate in cases such as the filter and wrap modes being specified in the shader instead
+        /// </remaks>
+        public bool KeepCPUCopyOfTexture = true;
 
-		/// <summary>
-		/// Specifies whether the MipMap chain should be generated for model textures
-		/// </summary>
-		public bool GenerateMipMapsForTextures = true;
+        /// <summary>
+        /// Specifies whether the MipMap chain should be generated for model textures
+        /// </summary>
+        public bool GenerateMipMapsForTextures = true;
 
-		/// <summary>
-		/// When screen coverage is above threashold and no LOD mesh cull the object
-		/// </summary>
-		public bool CullFarLOD = false;
+        /// <summary>
+        /// Texture compressor to avoid OutOfMemory Exception.
+        /// Concrete implementation is located in project includes UnityGLTF package.
+        /// </summary>
+        public static ITextureCompressor TextureCompressor { get; set; }
+
+        /// <summary>
+        /// When screen coverage is above threashold and no LOD mesh cull the object
+        /// </summary>
+        public bool CullFarLOD = false;
 
 		/// <summary>
 		/// Statistics from the scene
@@ -497,7 +503,13 @@ namespace UnityGLTF
 				// we only load the streams if not a base64 uri, meaning the data is in the uri
 				if (image.Uri != null && !URIHelper.IsBase64Uri(image.Uri))
 				{
-					await _options.ExternalDataLoader.LoadStream(image.Uri);
+                    //If textures are too huge:
+                    //Compress it. 
+                    //And use path to compressed copy.
+                    image.Uri = await TextureCompressor.TryCompress(image.Uri);
+                    Debug.Log("Load Texture: " + image.Uri);
+
+                    await _options.ExternalDataLoader.LoadStream(image.Uri);
 					_assetCache.ImageStreamCache[sourceId] = _options.ExternalDataLoader.LoadedStream;
 				}
 				else if (image.Uri == null && image.BufferView != null && _assetCache.BufferCache[image.BufferView.Value.Buffer.Id] == null)
