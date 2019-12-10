@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
+using System.Runtime.ExceptionServices;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityGLTF.Loader;
@@ -64,7 +66,7 @@ namespace UnityGLTF
 			}
 		}
 
-		public async Task Load()
+		public async Task Load(int sceneIndex = -1, bool showSceneObj = true, Action<GameObject, ExceptionDispatchInfo> onLoadComplete = null, CancellationToken cancellationToken = default(CancellationToken), IProgress<ImportProgress> progress = null)
 		{
 			var importOptions = new ImportOptions
 			{
@@ -127,7 +129,7 @@ namespace UnityGLTF
 				}
 				else
 				{
-					await sceneImporter.LoadSceneAsync();
+					await sceneImporter.LoadSceneAsync(sceneIndex, showSceneObj, onLoadComplete, cancellationToken, progress);
 				}
 
 				// Override the shaders on all materials if a shader is provided
