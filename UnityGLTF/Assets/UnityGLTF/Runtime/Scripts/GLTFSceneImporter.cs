@@ -64,12 +64,30 @@ namespace UnityGLTF
 		public int BuffersTotal;
 		public int BuffersLoaded;
 
-		public float Progress
+        public int AnimationClipsTotal;
+        public int AnimationClipsLoaded;
+
+        public int AnimationChannelsTotal;
+        public int AnimationChannelsLoaded;
+
+        public int AnimationFramesTotal;
+        public int AnimationFramesLoaded;
+
+        public int AnimationTangentsTotal;
+        public int AnimationTangentsLoaded;
+
+        public float Progress
 		{
 			get
 			{
-				int total = NodeTotal + TextureTotal + BuffersTotal;
-				int loaded = NodeLoaded + TextureLoaded + BuffersLoaded;
+				int total = 
+                    NodeTotal + TextureTotal + BuffersTotal + 
+                    AnimationChannelsTotal + AnimationFramesTotal + AnimationTangentsTotal;
+
+				int loaded = 
+                    NodeLoaded + TextureLoaded + BuffersLoaded + 
+                    AnimationChannelsLoaded + AnimationFramesLoaded + AnimationTangentsLoaded;
+
 				if (total > 0)
 				{
 					return (float)loaded / total;
@@ -210,7 +228,11 @@ namespace UnityGLTF
 		protected ImportProgress progressStatus = default(ImportProgress);
 		protected IProgress<ImportProgress> progress = null;
 
-		public GLTFSceneImporter(string gltfFileName, ImportOptions options)
+        //Customized for heavily animated models
+        private const int ANIMATION_UPDATE_STEP = 50;
+        private const int ANIMATION_UPDATE_INTERVAL_MS = 10;
+
+        public GLTFSceneImporter(string gltfFileName, ImportOptions options)
 		{
 			_gltfFileName = gltfFileName;
 			_options = options;
@@ -985,7 +1007,7 @@ namespace UnityGLTF
 			GLTFHelpers.BuildAnimationSamplers(ref samplersByType);
 		}
 
-		protected void SetAnimationCurve(
+		protected async Task SetAnimationCurve(
 			AnimationClip clip,
 			string relativePath,
 			string[] propertyNames,
@@ -993,9 +1015,9 @@ namespace UnityGLTF
 			NumericArray output,
 			InterpolationType mode,
 			Type curveType,
-			ValuesConvertion getConvertedValues)
+			ValuesConvertion getConvertedValues,
+            CancellationToken cancellationToken)
 		{
-
 			var channelCount = propertyNames.Length;
 			var frameCount = input.AsFloats.Length;
 
@@ -1006,9 +1028,15 @@ namespace UnityGLTF
 				keyframes[ci] = new Keyframe[frameCount];
 			}
 
-			for (var i = 0; i < frameCount; ++i)
+            progressStatus.AnimationFramesTotal = frameCount;
+            progress?.Report(progressStatus);
+
+            progressStatus.AnimationTangentsTotal = channelCount;
+            progress?.Report(progressStatus);
+
+            for (var i = 0; i < frameCount; ++i)
 			{
-				var time = input.AsFloats[i];
+                var time = input.AsFloats[i];
 
 				float[] values = null;
 				float[] inTangents = null;
@@ -1031,7 +1059,7 @@ namespace UnityGLTF
 
 				for (var ci = 0; ci < channelCount; ++ci)
 				{
-					if (mode == InterpolationType.CUBICSPLINE)
+                    if (mode == InterpolationType.CUBICSPLINE)
 					{
 						keyframes[ci][i] = new Keyframe(time, values[ci], inTangents[ci], outTangents[ci]);
 					}
@@ -1040,9 +1068,19 @@ namespace UnityGLTF
 						keyframes[ci][i] = new Keyframe(time, values[ci]);
 					}
 				}
-			}
 
-			for (var ci = 0; ci < channelCount; ++ci)
+                if (i % ANIMATION_UPDATE_STEP == 0)
+                {
+                    progressStatus.AnimationFramesLoaded = i;
+                    progress?.Report(progressStatus);
+
+                    await Task.Delay(ANIMATION_UPDATE_INTERVAL_MS);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
+
+            for (var ci = 0; ci < channelCount; ++ci)
 			{
 				// copy all key frames data to animation curve and add it to the clip
 				AnimationCurve curve = new AnimationCurve(keyframes[ci]);
@@ -1057,34 +1095,51 @@ namespace UnityGLTF
 					}
 				}
 				clip.SetCurve(relativePath, curveType, propertyNames[ci], curve);
-			}
+
+                if (ci % ANIMATION_UPDATE_STEP == 0)
+                {
+                    progressStatus.AnimationTangentsLoaded = ci;
+                    progress?.Report(progressStatus);
+
+                    await Task.Delay(ANIMATION_UPDATE_INTERVAL_MS);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+            }
 		}
 
-		private static void SetTangentMode(AnimationCurve curve, Keyframe[] keyframes, int keyframeIndex, InterpolationType interpolation)
-		{
-			var key = keyframes[keyframeIndex];
+        private static void SetTangentMode(AnimationCurve curve, Keyframe[] keyframes, int keyframeIndex, InterpolationType interpolation)
+        {
+            var key = keyframes[keyframeIndex];
 
-			switch (interpolation)
-			{
-				case InterpolationType.CATMULLROMSPLINE:
-					key.inTangent = 0;
-					key.outTangent = 0;
-					break;
-				case InterpolationType.LINEAR:
-					key.inTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex);
-					key.outTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex + 1);
-					break;
-				case InterpolationType.STEP:
-					key.inTangent = float.PositiveInfinity;
-					key.outTangent = float.PositiveInfinity;
-					break;
+            switch (interpolation)
+            {
+                case InterpolationType.CATMULLROMSPLINE:
+                    key.inTangent = 0;
+                    key.outTangent = 0;
+                    break;
+                case InterpolationType.LINEAR:
+                    key.inTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex);
+                    key.outTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex + 1);
+                    break;
+                case InterpolationType.STEP:
+                    key.inTangent = float.PositiveInfinity;
+                    key.outTangent = float.PositiveInfinity;
+                    break;
 
-				default:
-					throw new NotImplementedException();
-			}
+                default:
+                    throw new NotImplementedException();
+            }
 
-			curve.MoveKey(keyframeIndex, key);
-		}
+            if (keyframeIndex < curve.keys.Length)
+            {
+                curve.MoveKey(keyframeIndex, key);
+            }
+            else
+            {
+                curve.AddKey(key);
+            }
+        }
 
 		private static float GetCurveKeyframeLeftLinearSlope(Keyframe[] keyframes, int keyframeIndex)
 		{
@@ -1096,7 +1151,11 @@ namespace UnityGLTF
 			var valueDelta = keyframes[keyframeIndex].value - keyframes[keyframeIndex - 1].value;
 			var timeDelta = keyframes[keyframeIndex].time - keyframes[keyframeIndex - 1].time;
 
-			Debug.Assert(timeDelta > 0, "Unity does not allow you to put two keyframes in with the same time, so this should never occur.");
+            if (timeDelta <= 0)
+            {
+                Debug.LogWarning("Unity does not allow you to put two keyframes in with the same time, so this should never occur.");
+                return 0;
+            }
 
 			return valueDelta / timeDelta;
 		}
@@ -1129,9 +1188,13 @@ namespace UnityGLTF
 			// needed because Animator component is unavailable at runtime
 			clip.legacy = true;
 
-			foreach (AnimationChannel channel in animation.Channels)
+            progressStatus.AnimationChannelsTotal = animation.Channels.Count;
+            progress?.Report(progressStatus);
+
+            for (int i = 0; i < animation.Channels.Count; i++)
 			{
-				AnimationSamplerCacheData samplerCache = animationCache.Samplers[channel.Sampler.Id];
+                AnimationChannel channel = animation.Channels[i];
+                AnimationSamplerCacheData samplerCache = animationCache.Samplers[channel.Sampler.Id];
 				if (channel.Target.Node == null)
 				{
 					// If a channel doesn't have a target node, then just skip it.
@@ -1153,39 +1216,42 @@ namespace UnityGLTF
 					case GLTFAnimationChannelPath.translation:
 						propertyNames = new string[] { "localPosition.x", "localPosition.y", "localPosition.z" };
 
-						SetAnimationCurve(clip, relativePath, propertyNames, input, output,
+						await SetAnimationCurve(clip, relativePath, propertyNames, input, output,
 										  samplerCache.Interpolation, typeof(Transform),
 										  (data, frame) =>
 										  {
 											  var position = data.AsVec3s[frame].ToUnityVector3Convert();
 											  return new float[] { position.x, position.y, position.z };
-										  });
+										  },
+                                          cancellationToken);
 						break;
 
 					case GLTFAnimationChannelPath.rotation:
 						propertyNames = new string[] { "localRotation.x", "localRotation.y", "localRotation.z", "localRotation.w" };
 
-						SetAnimationCurve(clip, relativePath, propertyNames, input, output,
+						await SetAnimationCurve(clip, relativePath, propertyNames, input, output,
 										  samplerCache.Interpolation, typeof(Transform),
 										  (data, frame) =>
 										  {
 											  var rotation = data.AsVec4s[frame];
 											  var quaternion = new GLTF.Math.Quaternion(rotation.X, rotation.Y, rotation.Z, rotation.W).ToUnityQuaternionConvert();
 											  return new float[] { quaternion.x, quaternion.y, quaternion.z, quaternion.w };
-										  });
+										  },
+                                          cancellationToken);
 
 						break;
 
 					case GLTFAnimationChannelPath.scale:
 						propertyNames = new string[] { "localScale.x", "localScale.y", "localScale.z" };
 
-						SetAnimationCurve(clip, relativePath, propertyNames, input, output,
+						await SetAnimationCurve(clip, relativePath, propertyNames, input, output,
 										  samplerCache.Interpolation, typeof(Transform),
 										  (data, frame) =>
 										  {
 											  var scale = data.AsVec3s[frame].ToUnityVector3Raw();
 											  return new float[] { scale.x, scale.y, scale.z };
-										  });
+										  },
+                                          cancellationToken);
 						break;
 
 					case GLTFAnimationChannelPath.weights:
@@ -1207,7 +1273,18 @@ namespace UnityGLTF
 						Debug.LogWarning("Cannot read GLTF animation path");
 						break;
 				} // switch target type
-			} // foreach channel
+
+                if (i % ANIMATION_UPDATE_STEP == 0)
+                {
+                    progressStatus.AnimationChannelsLoaded = i;
+                    progress?.Report(progressStatus);
+
+                    await Task.Delay(ANIMATION_UPDATE_INTERVAL_MS);
+
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+            } // foreach channel
 
 			return clip;
 		}
@@ -1232,8 +1309,10 @@ namespace UnityGLTF
 
 				if (_gltfRoot.Animations != null && _gltfRoot.Animations.Count > 0)
 				{
-					// create the AnimationClip that will contain animation data
-					Animation animation = sceneObj.AddComponent<Animation>();
+                    progressStatus.AnimationClipsTotal = _gltfRoot.Animations.Count;
+
+                    // create the AnimationClip that will contain animation data
+                    Animation animation = sceneObj.AddComponent<Animation>();
 					for (int i = 0; i < _gltfRoot.Animations.Count; ++i)
 					{
 						AnimationClip clip = await ConstructClip(sceneObj.transform, i, cancellationToken);
@@ -1245,7 +1324,14 @@ namespace UnityGLTF
 						{
 							animation.clip = clip;
 						}
-					}
+
+                        progressStatus.AnimationClipsLoaded = i;
+                        progress?.Report(progressStatus);
+
+                        await Task.Delay(ANIMATION_UPDATE_INTERVAL_MS);
+
+                        cancellationToken.ThrowIfCancellationRequested();
+                    }
 				}
 
 				CreatedObject = sceneObj;
@@ -2268,7 +2354,6 @@ namespace UnityGLTF
 			progressStatus.TextureLoaded++;
 			progress?.Report(progressStatus);
 			_assetCache.ImageCache[imageCacheIndex] = texture;
-
 		}
 
 		protected virtual BufferCacheData ConstructBufferFromGLB(int bufferIndex)
