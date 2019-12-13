@@ -228,8 +228,10 @@ namespace UnityGLTF
 		protected ImportProgress progressStatus = default(ImportProgress);
 		protected IProgress<ImportProgress> progress = null;
 
-        //Customized for heavily animated models
-        private const int ANIMATION_UPDATE_STEP = 50;
+        const int ANIMATION_UPDATE_STEP_FAST = 1000;
+        const int ANIMATION_UPDATE_STEP_SLOW = 50;
+        int animationUpdateStep;
+
         private const int ANIMATION_UPDATE_INTERVAL_MS = 10;
 
         public GLTFSceneImporter(string gltfFileName, ImportOptions options)
@@ -1069,7 +1071,7 @@ namespace UnityGLTF
 					}
 				}
 
-                if (i % ANIMATION_UPDATE_STEP == 0)
+                if (i % animationUpdateStep == 0)
                 {
                     progressStatus.AnimationFramesLoaded = i;
                     progress?.Report(progressStatus);
@@ -1096,7 +1098,7 @@ namespace UnityGLTF
 				}
 				clip.SetCurve(relativePath, curveType, propertyNames[ci], curve);
 
-                if (ci % ANIMATION_UPDATE_STEP == 0)
+                if (ci % animationUpdateStep == 0)
                 {
                     progressStatus.AnimationTangentsLoaded = ci;
                     progress?.Report(progressStatus);
@@ -1274,7 +1276,7 @@ namespace UnityGLTF
 						break;
 				} // switch target type
 
-                if (i % ANIMATION_UPDATE_STEP == 0)
+                if (i % animationUpdateStep == 0)
                 {
                     progressStatus.AnimationChannelsLoaded = i;
                     progress?.Report(progressStatus);
@@ -1310,6 +1312,11 @@ namespace UnityGLTF
 				if (_gltfRoot.Animations != null && _gltfRoot.Animations.Count > 0)
 				{
                     progressStatus.AnimationClipsTotal = _gltfRoot.Animations.Count;
+
+                    animationUpdateStep =
+                        _gltfRoot.Animations.Count <= 1
+                            ? ANIMATION_UPDATE_STEP_FAST
+                            : ANIMATION_UPDATE_STEP_SLOW;
 
                     // create the AnimationClip that will contain animation data
                     Animation animation = sceneObj.AddComponent<Animation>();
