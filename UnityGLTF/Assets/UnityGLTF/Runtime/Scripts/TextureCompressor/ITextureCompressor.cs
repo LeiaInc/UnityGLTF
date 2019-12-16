@@ -7,6 +7,6 @@ namespace UnityGLTF
     /// </summary>
     public interface ITextureCompressor
     {
-        Task<string> TryCompress(string imageFileName);
+        Task<string> TryCompressThreadSafe(string imageFileName);
     }
 }

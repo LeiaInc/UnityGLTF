@@ -530,7 +530,7 @@ namespace UnityGLTF
                     //If textures are too huge:
                     //Compress it. 
                     //And use path to compressed copy.
-                    image.Uri = await TextureCompressor.TryCompress(image.Uri);
+                    image.Uri = await TextureCompressor.TryCompressThreadSafe(image.Uri);
                     Debug.Log("Load Texture: " + image.Uri);
 
                     await _options.ExternalDataLoader.LoadStream(image.Uri);

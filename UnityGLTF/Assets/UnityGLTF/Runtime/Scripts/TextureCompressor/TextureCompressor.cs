@@ -10,40 +10,43 @@ namespace UnityGLTF
     {
         const int TEXTURE_SIZE = 512;
         const int CHECK_INTERVAL = 250;
+        static readonly Color[,] pixels = new Color[TEXTURE_SIZE, TEXTURE_SIZE];
 
         string modelDirectory;
         Texture2D textureToCompress;
         Queue<string> imagePaths = new Queue<string>();
 
+        IProgress<ImportProgress> progress;
+        ImportProgress progressStatus;
+
         public const string COMPRESSION_SUFFIX = "_COMPRESSED";
 
-        public void SetBasePathFromModelFile(string modelPath)
+        public void Init(string modelPath, IProgress<ImportProgress> progress)
         {
             modelDirectory = Path.GetDirectoryName(modelPath);
+            this.progress = progress;
+            progressStatus = default;
         }
 
-        public async Task<string> TryCompress(string imageFileName)
+        public async Task<string> TryCompressThreadSafe(string imageFileName)
         {
             string imagePath = Path.Combine(modelDirectory, imageFileName);
 
             if (File.Exists(imagePath))
             {
                 imagePaths.Enqueue(imagePath);
+                ++progressStatus.TextureTotal;
+                progress.Report(progressStatus);
 
+                //Wait until Copression Done on main thread
                 while (imagePaths.Count > 0)
                 {
                     await Task.Delay(CHECK_INTERVAL);
                 }
 
-                string compressedPath = ToCompressedPath(imagePath);
-
-                if (File.Exists(compressedPath))
-                {
-                    return compressedPath;
-                }
-
-                //No compression is Applied
-                return imagePath;
+                ++progressStatus.TextureLoaded;
+                progress.Report(progressStatus);
+                return ToCompressedPath(imagePath);
             }
             else
             {
@@ -51,27 +54,31 @@ namespace UnityGLTF
             }
         }
 
+        bool ShouldCompress(Texture2D texture, string path)
+        {
+            return ShouldCompress(texture) && IsNotAlreadyCompressed(path);
+        }
+
         bool ShouldCompress(Texture2D texture)
         {
             return texture.width > TEXTURE_SIZE && texture.height > TEXTURE_SIZE;
         }
 
-        bool ShouldCompress(Texture2D texture, string path)
+        bool IsNotAlreadyCompressed(string path)
         {
-            //IF is Huge & Doesn't Compressed before
-            return ShouldCompress(texture) && !File.Exists(ToCompressedPath(path));
+            return !File.Exists(ToCompressedPath(path));
         }
 
         void Update()
         {
             if (imagePaths.Count > 0)
             {
-                TryCompressThreadSafe(imagePaths.Peek());
+                TryCompress(imagePaths.Peek());
             }
         }
 
-        //Main Thread
-        void TryCompressThreadSafe(string path)
+        //Main thread due to intensive usage of Unity API
+        void TryCompress(string path)
         {
             byte[] imageData = File.ReadAllBytes(path);
 
@@ -90,8 +97,6 @@ namespace UnityGLTF
 
         void Compress(Texture2D texture)
         {
-            Color[,] pixels = new Color[TEXTURE_SIZE, TEXTURE_SIZE];
-
             for(int x0 = 0; x0 < TEXTURE_SIZE; ++x0)
             {
                 float xNormalized = (float)x0 / TEXTURE_SIZE;
@@ -117,13 +122,13 @@ namespace UnityGLTF
             }
 
             texture.Apply();
-
-            OnTextureScaled();
+            OnCompressed();
         }
 
-        void OnTextureScaled()
+        void OnCompressed()
         {
-            string path = FinishTextureScaling();
+            string path = imagePaths.Peek();
+
             string extention = Path.GetExtension(path).ToLower();
 
             byte[] compressedData;
@@ -164,13 +169,15 @@ namespace UnityGLTF
 
             File.WriteAllBytes(compressedPath, compressedData);
 
-            //Clean Memory
-            DestroyImmediate(textureToCompress);
+            FinishTextureScaling();
         }
 
-        string FinishTextureScaling()
+        void FinishTextureScaling()
         {
-            return imagePaths.Dequeue();
+            imagePaths.Dequeue();
+
+            //Clean Memory
+            DestroyImmediate(textureToCompress);
         }
 
         public static string ToCompressedPath(string path)
