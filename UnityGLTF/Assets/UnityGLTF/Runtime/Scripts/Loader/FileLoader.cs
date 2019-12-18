@@ -35,7 +35,7 @@ namespace UnityGLTF.Loader
 			string pathToLoad = Path.Combine(rootPath, fileToLoad);
 			if (!File.Exists(pathToLoad))
 			{
-				throw new FileNotFoundException("Buffer file not found", fileToLoad);
+				throw new FileNotFoundException("Buffer file not found", pathToLoad);
 			}
 
 			return Task.Run(() => { LoadedStream = File.OpenRead(pathToLoad); });

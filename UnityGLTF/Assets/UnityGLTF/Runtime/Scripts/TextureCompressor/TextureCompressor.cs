@@ -13,8 +13,8 @@ namespace UnityGLTF
         static readonly Color[,] pixels = new Color[TEXTURE_SIZE, TEXTURE_SIZE];
 
         string modelDirectory;
-        Texture2D textureToCompress;
         Queue<string> imagePaths = new Queue<string>();
+        Queue<string> resultImagePaths = new Queue<string>();
 
         IProgress<ImportProgress> progress;
         ImportProgress progressStatus;
@@ -46,7 +46,7 @@ namespace UnityGLTF
 
                 ++progressStatus.TextureLoaded;
                 progress.Report(progressStatus);
-                return ToCompressedPath(imagePath);
+                return resultImagePaths.Dequeue();
             }
             else
             {
@@ -54,19 +54,19 @@ namespace UnityGLTF
             }
         }
 
-        bool ShouldCompress(Texture2D texture, string path)
-        {
-            return ShouldCompress(texture) && IsNotAlreadyCompressed(path);
-        }
-
         bool ShouldCompress(Texture2D texture)
         {
             return texture.width > TEXTURE_SIZE && texture.height > TEXTURE_SIZE;
         }
 
-        bool IsNotAlreadyCompressed(string path)
+        bool IsAlreadyCpmpressed(string imagePath)
         {
-            return !File.Exists(ToCompressedPath(path));
+            return File.Exists(ToCompressedPath(imagePath));
+        }
+
+        bool IsNotAlreadyCompressed(string imagePath)
+        {
+            return !IsAlreadyCpmpressed(imagePath);
         }
 
         void Update()
@@ -78,21 +78,32 @@ namespace UnityGLTF
         }
 
         //Main thread due to intensive usage of Unity API
-        void TryCompress(string path)
+        void TryCompress(string imagePath)
         {
-            byte[] imageData = File.ReadAllBytes(path);
+            byte[] imageData = File.ReadAllBytes(imagePath);
 
-            textureToCompress = new Texture2D(0, 0, TextureFormat.ARGB32, false, true);
+            Texture2D textureToCompress = new Texture2D(0, 0, TextureFormat.ARGB32, false, true);
             textureToCompress.LoadImage(imageData);
 
-            if (ShouldCompress(textureToCompress, path))
+            string resultImagePath;
+
+            if (ShouldCompress(textureToCompress))
             {
-                Compress(textureToCompress);
+                resultImagePath = ToCompressedPath(imagePath);
+
+                if (IsNotAlreadyCompressed(resultImagePath))
+                {
+                    Compress(textureToCompress);
+                    WriteToFile(resultImagePath, textureToCompress);
+                }
             }
             else
             {
-                FinishTextureScaling();
+                resultImagePath = imagePaths.Peek();
             }
+
+            DestroyImmediate(textureToCompress);
+            FinishTextureScaling(resultImagePath);
         }
 
         void Compress(Texture2D texture)
@@ -122,14 +133,12 @@ namespace UnityGLTF
             }
 
             texture.Apply();
-            OnCompressed();
         }
 
-        void OnCompressed()
+        //Save to next usages
+        void WriteToFile(string compressedImagePath, Texture2D compressedTexture)
         {
-            string path = imagePaths.Peek();
-
-            string extention = Path.GetExtension(path).ToLower();
+            string extention = Path.GetExtension(compressedImagePath).ToLower();
 
             byte[] compressedData;
 
@@ -137,27 +146,27 @@ namespace UnityGLTF
             {
                 case ".jpg":
 
-                    compressedData = textureToCompress.EncodeToJPG();
+                    compressedData = compressedTexture.EncodeToJPG();
                     break;
 
                 case ".jpeg":
 
-                    compressedData = textureToCompress.EncodeToJPG();
+                    compressedData = compressedTexture.EncodeToJPG();
                     break;
 
                 case ".png":
 
-                    compressedData = textureToCompress.EncodeToPNG();
+                    compressedData = compressedTexture.EncodeToPNG();
                     break;
 
                 case ".tga":
 
-                    compressedData = textureToCompress.EncodeToTGA();
+                    compressedData = compressedTexture.EncodeToTGA();
                     break;
 
                 case ".exr":
 
-                    compressedData = textureToCompress.EncodeToEXR();
+                    compressedData = compressedTexture.EncodeToEXR();
                     break;
 
                 default:
@@ -165,19 +174,14 @@ namespace UnityGLTF
                     return;
             }
 
-            string compressedPath = ToCompressedPath(path);
-
-            File.WriteAllBytes(compressedPath, compressedData);
-
-            FinishTextureScaling();
+            File.WriteAllBytes(compressedImagePath, compressedData);
         }
 
-        void FinishTextureScaling()
+        void FinishTextureScaling(string resultImagePath)
         {
+            resultImagePaths.Enqueue(resultImagePath);
+            //Triggers exit from async method (TryCompressThreadSafe)
             imagePaths.Dequeue();
-
-            //Clean Memory
-            DestroyImmediate(textureToCompress);
         }
 
         public static string ToCompressedPath(string path)
