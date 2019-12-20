@@ -229,10 +229,10 @@ namespace UnityGLTF
 		protected IProgress<ImportProgress> progress = null;
 
         const int ANIMATION_UPDATE_STEP_FAST = 1000;
-        const int ANIMATION_UPDATE_STEP_SLOW = 50;
+        const int ANIMATION_UPDATE_STEP_SLOW = 100;
         int animationUpdateStep;
 
-        private const int ANIMATION_UPDATE_INTERVAL_MS = 10;
+        private const int ANIMATION_UPDATE_INTERVAL_MS = 1;
 
         public GLTFSceneImporter(string gltfFileName, ImportOptions options)
 		{
@@ -1083,20 +1083,21 @@ namespace UnityGLTF
             }
 
             for (var ci = 0; ci < channelCount; ++ci)
-			{
-				// copy all key frames data to animation curve and add it to the clip
-				AnimationCurve curve = new AnimationCurve(keyframes[ci]);
+            {
+                // copy all key frames data to animation curve and add it to the clip
+                AnimationCurve curve = new AnimationCurve(keyframes[ci]);
 
-				// For cubic spline interpolation, the inTangents and outTangents are already explicitly defined.
-				// For the rest, set them appropriately.
-				if (mode != InterpolationType.CUBICSPLINE)
-				{
-					for (var i = 0; i < keyframes[ci].Length; i++)
-					{
-						SetTangentMode(curve, keyframes[ci], i, mode);
-					}
-				}
-				clip.SetCurve(relativePath, curveType, propertyNames[ci], curve);
+                // For cubic spline interpolation, the inTangents and outTangents are already explicitly defined.
+                // For the rest, set them appropriately.
+                if (mode != InterpolationType.CUBICSPLINE)
+                {
+                    //Not appropriate implementation.
+                    //for (var i = 0; i < keyframes[ci].Length; i++)
+                    //{
+                    //    SetTangentMode(curve, keyframes[ci], i, mode);
+                    //}
+                }
+                clip.SetCurve(relativePath, curveType, propertyNames[ci], curve);
 
                 if (ci % animationUpdateStep == 0)
                 {
@@ -1108,59 +1109,57 @@ namespace UnityGLTF
                     cancellationToken.ThrowIfCancellationRequested();
                 }
             }
-		}
-
-        private static void SetTangentMode(AnimationCurve curve, Keyframe[] keyframes, int keyframeIndex, InterpolationType interpolation)
-        {
-            var key = keyframes[keyframeIndex];
-
-            switch (interpolation)
-            {
-                case InterpolationType.CATMULLROMSPLINE:
-                    key.inTangent = 0;
-                    key.outTangent = 0;
-                    break;
-                case InterpolationType.LINEAR:
-                    key.inTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex);
-                    key.outTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex + 1);
-                    break;
-                case InterpolationType.STEP:
-                    key.inTangent = float.PositiveInfinity;
-                    key.outTangent = float.PositiveInfinity;
-                    break;
-
-                default:
-                    throw new NotImplementedException();
-            }
-
-            if (keyframeIndex < curve.keys.Length)
-            {
-                curve.MoveKey(keyframeIndex, key);
-            }
-            else
-            {
-                curve.AddKey(key);
-            }
         }
 
-		private static float GetCurveKeyframeLeftLinearSlope(Keyframe[] keyframes, int keyframeIndex)
-		{
-			if (keyframeIndex <= 0 || keyframeIndex >= keyframes.Length)
-			{
-				return 0;
-			}
+  //      private static void SetTangentMode(AnimationCurve curve, Keyframe[] keyframes, int keyframeIndex, InterpolationType interpolation)
+  //      {
+  //          var key = keyframes[keyframeIndex];
 
-			var valueDelta = keyframes[keyframeIndex].value - keyframes[keyframeIndex - 1].value;
-			var timeDelta = keyframes[keyframeIndex].time - keyframes[keyframeIndex - 1].time;
+  //          switch (interpolation)
+  //          {
+  //              case InterpolationType.CATMULLROMSPLINE:
+  //                  key.inTangent = 0;
+  //                  key.outTangent = 0;
+  //                  break;
+  //              case InterpolationType.LINEAR:
+  //                  key.inTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex);
+  //                  key.outTangent = GetCurveKeyframeLeftLinearSlope(keyframes, keyframeIndex + 1);
+  //                  break;
+  //              case InterpolationType.STEP:
+  //                  key.inTangent = float.PositiveInfinity;
+  //                  key.outTangent = float.PositiveInfinity;
+  //                  break;
 
-            if (timeDelta <= 0)
-            {
-                Debug.LogWarning("Unity does not allow you to put two keyframes in with the same time, so this should never occur.");
-                return 0;
-            }
+  //              default:
+  //                  throw new NotImplementedException();
+  //          }
 
-			return valueDelta / timeDelta;
-		}
+  //          if (keyframeIndex < curve.keys.Length)
+  //          {
+  //              curve.MoveKey(keyframeIndex, key);
+  //          }
+  //          else
+  //          {
+  //              curve.AddKey(key);
+  //          }
+  //      }
+
+		//private static float GetCurveKeyframeLeftLinearSlope(Keyframe[] keyframes, int keyframeIndex)
+		//{
+  //          if (keyframeIndex <= 0 || keyframeIndex >= keyframes.Length)
+  //          {
+  //              return 0;
+  //          }
+
+  //          var valueDelta = keyframes[keyframeIndex].value - keyframes[keyframeIndex - 1].value;
+		//	var timeDelta = keyframes[keyframeIndex].time - keyframes[keyframeIndex - 1].time;
+
+  //          Debug.Assert(
+  //                       timeDelta > 0,
+  //                       $"Unity does not allow you to put two keyframes in with the same time, so this should never occur. TimeDelta: {timeDelta}");
+
+  //          return valueDelta / timeDelta;
+		//}
 
 		protected async Task<AnimationClip> ConstructClip(Transform root, int animationId, CancellationToken cancellationToken)
 		{
@@ -1332,7 +1331,7 @@ namespace UnityGLTF
 							animation.clip = clip;
 						}
 
-                        progressStatus.AnimationClipsLoaded = i;
+                        ++progressStatus.AnimationClipsLoaded;
                         progress?.Report(progressStatus);
 
                         await Task.Delay(ANIMATION_UPDATE_INTERVAL_MS);
@@ -1666,7 +1665,7 @@ namespace UnityGLTF
 				case 6: return new T[][] { new T[y], new T[y], new T[y], new T[y], new T[y], new T[y] };
 				case 7: return new T[][] { new T[y], new T[y], new T[y], new T[y], new T[y], new T[y], new T[y] };
 				case 8: return new T[][] { new T[y], new T[y], new T[y], new T[y], new T[y], new T[y], new T[y], new T[y] };
-				default: throw new ArgumentOutOfRangeException(nameof(x));
+				default: throw new ArgumentOutOfRangeException($"{nameof(x)} value: {x}");
 			}
 		}
 
