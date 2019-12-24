@@ -1,17 +1,11 @@
-﻿using System.Collections;
-using System.IO;
-using System.Threading.Tasks;
-using GLTF;
-using GLTF.Schema;
+﻿using System.Threading.Tasks;
 namespace UnityGLTF.Loader
 {
-	public interface ILoader
+    public interface ILoader
 	{
 		Task LoadStream(string relativeFilePath);
 
-		void LoadStreamSync(string jsonFilePath);
-
-		Stream LoadedStream { get; }
+		byte[] Data { get; }
 
 		bool HasSyncLoadMethod { get; }
 	}

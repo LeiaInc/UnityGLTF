@@ -17,9 +17,9 @@ namespace UnityGLTF.Loader
 {
 	public class WebRequestLoader : ILoader
 	{
-		public Stream LoadedStream { get; private set; }
+        public byte[] Data { get; private set; }
 
-		public bool HasSyncLoadMethod => false;
+        public bool HasSyncLoadMethod => false;
 
 		private readonly HttpClient httpClient = new HttpClient();
 		private Uri baseAddress;
@@ -60,20 +60,16 @@ namespace UnityGLTF.Loader
 
 			response.EnsureSuccessStatusCode();
 
-			// HACK: Download the whole file before returning the stream
-			// Ideally the parsers would wait for data to be available, but they don't.
-			LoadedStream = new MemoryStream((int?)response.Content.Headers.ContentLength ?? 5000);
+            // HACK: Download the whole file before returning the stream
+            // Ideally the parsers would wait for data to be available, but they don't.
+            MemoryStream loadedStream = new MemoryStream((int?)response.Content.Headers.ContentLength ?? 5000);
 #if WINDOWS_UWP
-			await response.Content.WriteToStreamAsync(LoadedStream.AsOutputStream());
+			await response.Content.WriteToStreamAsync(loadedStream.AsOutputStream());
 #else
-			await response.Content.CopyToAsync(LoadedStream);
+			await response.Content.CopyToAsync(loadedStream);
 #endif
-			response.Dispose();
-		}
-
-		public void LoadStreamSync(string jsonFilePath)
-		{
-			throw new NotImplementedException();
+            Data = loadedStream.ToArray();
+            response.Dispose();
 		}
 
 #if !WINDOWS_UWP

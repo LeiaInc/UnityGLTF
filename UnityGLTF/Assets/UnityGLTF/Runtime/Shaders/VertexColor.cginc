@@ -65,7 +65,7 @@ fixed4 frag_vcol(WrappedVertexOutputForwardBase wvofb) : SV_Target
 
     half4 c = UNITY_BRDF_PBS(s.diffColor, s.specColor, s.oneMinusReflectivity, s.smoothness, s.normalWorld, -s.eyeVec, gi.light, gi.indirect);
     c.rgb += Emission(i.tex.xy);
-
+	c.rgb *= wvofb.color.rgb;
     UNITY_APPLY_FOG(i.fogCoord, c.rgb);
     return OutputForward(c, s.alpha);
 }

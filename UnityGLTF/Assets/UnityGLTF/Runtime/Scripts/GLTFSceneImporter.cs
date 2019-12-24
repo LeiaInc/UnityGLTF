@@ -1,5 +1,4 @@
 ﻿using GLTF;
-using GLTF.Extensions;
 using GLTF.Schema;
 using GLTF.Utilities;
 using System;
@@ -24,7 +23,7 @@ using WrapMode = UnityEngine.WrapMode;
 
 namespace UnityGLTF
 {
-	public class ImportOptions
+    public class ImportOptions
 	{
 		public ILoader ExternalDataLoader = null;
 		public AsyncCoroutineHelper AsyncCoroutineHelper = null;
@@ -519,7 +518,7 @@ namespace UnityGLTF
 
 		protected async Task ConstructImageBuffer(GLTFTexture texture, int textureIndex)
 		{
-			int sourceId = GetTextureSourceId(texture);
+			int sourceId = texture.Source.Id;
 			if (_assetCache.ImageStreamCache[sourceId] == null)
 			{
 				GLTFImage image = _gltfRoot.Images[sourceId];
@@ -531,11 +530,10 @@ namespace UnityGLTF
                     //Compress it. 
                     //And use path to compressed copy.
                     image.Uri = await TextureCompressor.TryCompressThreadSafe(image.Uri);
-                    Debug.Log("Load Texture: " + image.Uri);
 
                     await _options.ExternalDataLoader.LoadStream(image.Uri);
-					_assetCache.ImageStreamCache[sourceId] = _options.ExternalDataLoader.LoadedStream;
-				}
+                    _assetCache.ImageStreamCache[sourceId] = _options.ExternalDataLoader.Data.ToStream();
+                }
 				else if (image.Uri == null && image.BufferView != null && _assetCache.BufferCache[image.BufferView.Value.Buffer.Id] == null)
 				{
 					int bufferIndex = image.BufferView.Value.Buffer.Id;
@@ -559,22 +557,8 @@ namespace UnityGLTF
 
 		private async Task LoadJson(string jsonFilePath)
 		{
-#if !WINDOWS_UWP
-			if (IsMultithreaded && _options.ExternalDataLoader.HasSyncLoadMethod)
-			{
-				Thread loadThread = new Thread(() => _options.ExternalDataLoader.LoadStreamSync(jsonFilePath));
-				loadThread.Priority = ThreadPriority.Highest;
-				loadThread.Start();
-				RunCoroutineSync(WaitUntilEnum(new WaitUntil(() => !loadThread.IsAlive)));
-			}
-			else
-#endif
-			{
-				// HACK: Force the coroutine to run synchronously in the editor
-				await _options.ExternalDataLoader.LoadStream(jsonFilePath);
-			}
-
-			_gltfStream.Stream = _options.ExternalDataLoader.LoadedStream;
+            await _options.ExternalDataLoader.LoadStream(jsonFilePath);
+            _gltfStream.Stream = _options.ExternalDataLoader.Data.ToStream();
 			_gltfStream.StartPosition = 0;
 
 #if !WINDOWS_UWP
@@ -724,7 +708,7 @@ namespace UnityGLTF
 				else
 				{
 					await _options.ExternalDataLoader.LoadStream(buffer.Uri);
-					bufferDataStream = _options.ExternalDataLoader.LoadedStream;
+                    bufferDataStream = _options.ExternalDataLoader.Data.ToStream();
 				}
 
 				Debug.Assert(_assetCache.BufferCache[bufferIndex] == null);
@@ -740,7 +724,7 @@ namespace UnityGLTF
 
 		protected async Task ConstructImage(GLTFImage image, int imageCacheIndex, bool markGpuOnly, bool isLinear)
 		{
-			if (_assetCache.ImageCache[imageCacheIndex] == null)
+            if (_assetCache.ImageCache[imageCacheIndex] == null)
 			{
 				Stream stream = null;
 				if (image.Uri == null)
@@ -765,7 +749,7 @@ namespace UnityGLTF
 					else
 					{
 						stream = _assetCache.ImageStreamCache[imageCacheIndex];
-					}
+                    }
 				}
 
 				await YieldOnTimeoutAndThrowOnLowMemory();
@@ -1835,9 +1819,8 @@ namespace UnityGLTF
 			}
 		}
 
-		protected virtual Task ConstructMaterialImageBuffers(GLTFMaterial def)
+		protected virtual async Task ConstructMaterialImageBuffers(GLTFMaterial def)
 		{
-			var tasks = new List<Task>(8);
 			if (def.PbrMetallicRoughness != null)
 			{
 				var pbr = def.PbrMetallicRoughness;
@@ -1845,13 +1828,13 @@ namespace UnityGLTF
 				if (pbr.BaseColorTexture != null)
 				{
 					var textureId = pbr.BaseColorTexture.Index;
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 				if (pbr.MetallicRoughnessTexture != null)
 				{
 					var textureId = pbr.MetallicRoughnessTexture.Index;
 
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 			}
 
@@ -1861,14 +1844,14 @@ namespace UnityGLTF
 				{
 					var textureId = def.CommonConstant.LightmapTexture.Index;
 
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 			}
 
 			if (def.NormalTexture != null)
 			{
 				var textureId = def.NormalTexture.Index;
-				tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+				await ConstructImageBuffer(textureId.Value, textureId.Id);
 			}
 
 			if (def.OcclusionTexture != null)
@@ -1879,14 +1862,14 @@ namespace UnityGLTF
 						&& def.PbrMetallicRoughness.MetallicRoughnessTexture != null
 						&& def.PbrMetallicRoughness.MetallicRoughnessTexture.Index.Id == textureId.Id))
 				{
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 			}
 
 			if (def.EmissiveTexture != null)
 			{
 				var textureId = def.EmissiveTexture.Index;
-				tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+				await ConstructImageBuffer(textureId.Value, textureId.Id);
 			}
 
 			// pbr_spec_gloss extension
@@ -1897,17 +1880,15 @@ namespace UnityGLTF
 				if (specGlossDef.DiffuseTexture != null)
 				{
 					var textureId = specGlossDef.DiffuseTexture.Index;
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 
 				if (specGlossDef.SpecularGlossinessTexture != null)
 				{
 					var textureId = specGlossDef.SpecularGlossinessTexture.Index;
-					tasks.Add(ConstructImageBuffer(textureId.Value, textureId.Id));
+					await ConstructImageBuffer(textureId.Value, textureId.Id);
 				}
 			}
-
-			return Task.WhenAll(tasks);
 		}
 
 		/// <summary>
@@ -2182,12 +2163,6 @@ namespace UnityGLTF
 			}
 		}
 
-
-		protected virtual int GetTextureSourceId(GLTFTexture texture)
-		{
-			return texture.Source.Id;
-		}
-
 		/// <summary>
 		/// Creates a texture from a glTF texture
 		/// </summary>
@@ -2267,8 +2242,9 @@ namespace UnityGLTF
 		{
 			if (_assetCache.TextureCache[textureIndex].Texture == null)
 			{
-				int sourceId = GetTextureSourceId(texture);
-				GLTFImage image = _gltfRoot.Images[sourceId];
+				int sourceId = texture.Source.Id;
+
+                GLTFImage image = _gltfRoot.Images[sourceId];
 				await ConstructImage(image, sourceId, markGpuOnly, isLinear);
 
 				var source = _assetCache.ImageCache[sourceId];
