@@ -66,7 +66,7 @@ namespace UnityGLTF
 			}
 		}
 
-		public async Task Load(int sceneIndex = -1, bool showSceneObj = true, Action<GameObject, ExceptionDispatchInfo> onLoadComplete = null, CancellationToken cancellationToken = default(CancellationToken), IProgress<ImportProgress> progress = null)
+		public async Task Load(int sceneIndex = -1, bool showSceneObj = true, Action<GameObject, ExceptionDispatchInfo> onLoadComplete = null, CancellationToken cancellationToken = default, IProgress<ImportProgress> progress = null)
 		{
 			var importOptions = new ImportOptions
 			{

@@ -37,6 +37,7 @@ namespace UnityGLTF
 
 		private void Application_lowMemory()
 		{
+			Debug.LogWarning("App LOW memory.");
 			outOfMemory = true;
 		}
 

@@ -79,13 +79,13 @@ namespace UnityGLTF
 		{
 			get
 			{
-				int total = 
-                    NodeTotal + TextureTotal + BuffersTotal + 
-                    AnimationChannelsTotal + AnimationFramesTotal + AnimationTangentsTotal;
+				int total =
+					NodeTotal + TextureTotal + BuffersTotal +
+					AnimationClipsTotal + AnimationChannelsTotal + AnimationFramesTotal + AnimationTangentsTotal;
 
-				int loaded = 
-                    NodeLoaded + TextureLoaded + BuffersLoaded + 
-                    AnimationChannelsLoaded + AnimationFramesLoaded + AnimationTangentsLoaded;
+				int loaded =
+					NodeLoaded + TextureLoaded + BuffersLoaded +
+					AnimationClipsLoaded + AnimationChannelsLoaded + AnimationFramesLoaded + AnimationTangentsLoaded;
 
 				if (total > 0)
 				{
@@ -304,7 +304,7 @@ namespace UnityGLTF
 		/// <param name="onLoadComplete">Callback function for when load is completed</param>
 		/// <param name="cancellationToken">Cancellation token for loading</param>
 		/// <returns></returns>
-		public async Task LoadSceneAsync(int sceneIndex = -1, bool showSceneObj = true, Action<GameObject, ExceptionDispatchInfo> onLoadComplete = null, CancellationToken cancellationToken = default(CancellationToken), IProgress<ImportProgress> progress = null)
+		public async Task LoadSceneAsync(int sceneIndex = -1, bool showSceneObj = true, Action<GameObject, ExceptionDispatchInfo> onLoadComplete = null, CancellationToken cancellationToken = default, IProgress<ImportProgress> progress = null)
 		{
 			try
 			{
@@ -348,6 +348,7 @@ namespace UnityGLTF
 			{
 				Cleanup();
 
+				Debug.LogError(ex);
 				onLoadComplete?.Invoke(null, ExceptionDispatchInfo.Capture(ex));
 				throw;
 			}
