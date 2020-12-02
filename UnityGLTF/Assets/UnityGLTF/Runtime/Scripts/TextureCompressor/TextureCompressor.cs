@@ -8,7 +8,7 @@ namespace UnityGLTF
 {
     public class TextureCompressor : MonoBehaviour, ITextureCompressor
     {
-        const int TEXTURE_SIZE = 512;
+        const int TEXTURE_SIZE = 1024;
         const int CHECK_INTERVAL = 250;
         static readonly Color[,] pixels = new Color[TEXTURE_SIZE, TEXTURE_SIZE];
 
