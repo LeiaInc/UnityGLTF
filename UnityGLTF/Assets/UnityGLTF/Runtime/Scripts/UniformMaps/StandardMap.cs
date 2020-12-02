@@ -276,7 +276,10 @@ namespace UnityGLTF
 			get { return _alphaMode; }
 			set
 			{
-				if (value == AlphaMode.MASK)
+                Debug.Log("AlphaMode: " + value);
+
+                //value = AlphaMode.BLEND;
+                if (value == AlphaMode.MASK)
 				{
 					_material.SetOverrideTag("RenderType", "TransparentCutout");
 					_material.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.One);

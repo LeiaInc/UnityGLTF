@@ -322,7 +322,7 @@ namespace UnityGLTF.Extensions
 
 		public static UnityEngine.Color ToUnityColorRaw(this GLTF.Math.Color color)
 		{
-			return new UnityEngine.Color(color.R, color.G, color.B, color.A);
+            return new UnityEngine.Color(color.R, color.G, color.B, color.A);
 		}
 
 		public static GLTF.Math.Color ToNumericsColorRaw(this UnityEngine.Color color)
